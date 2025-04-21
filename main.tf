@@ -6,7 +6,7 @@ terraform {
     organization = "your-org-name"
 
     workspaces {
-      name = "your-workspace-name"
+      name = "Api-driven-Terraform"
     }
   }
 
