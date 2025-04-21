@@ -3,7 +3,7 @@
 terraform {
   required_version = ">= 1.0"
   backend "remote" {
-    organization = "your-org-name"
+    organization = "my-demo-projectva"
 
     workspaces {
       name = "Api-driven-Terraform"
