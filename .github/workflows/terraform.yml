@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - main
-  workflow_dispatch:
 
 jobs:
   trigger-tfc-run:
@@ -12,7 +11,7 @@ jobs:
 
     steps:
       - name: Set up job
-        run: echo "Starting Terraform Cloud API run..."
+        run: echo "Setting up job..."
 
       - name: Checkout code
         uses: actions/checkout@v3
@@ -35,44 +34,26 @@ jobs:
             https://app.terraform.io/api/v2/workspaces/${{ secrets.TFC_WORKSPACE_ID }}/configuration-versions)
 
           echo "$response"
-          upload_url=$(echo "$response" | jq -r .data.attributes."upload-url")
+          upload_url=$(echo "$response" | jq -r '.data.attributes."upload-url"')
           echo "upload_url=$upload_url" >> $GITHUB_ENV
 
-      - name: Prepare Terraform Configuration
+      - name: Create tar.gz of Terraform Code
         run: |
-          mkdir tf_package
-          cp *.tf tf_package/
-          cp terraform.yaml tf_package/ || true
-          tar -czf config.tar.gz -C tf_package .
+          tar --exclude='./.git' --exclude='./.github' -czf config.tar.gz .
 
       - name: Upload Configuration to Terraform
         run: |
           curl \
-            --request PUT \
             --header "Content-Type: application/octet-stream" \
+            --request PUT \
             --data-binary @config.tar.gz \
-            "${{ env.upload_url }}"
+            "$upload_url"
 
       - name: Trigger Run
-        run: |
-          curl \
-            --header "Authorization: Bearer ${{ secrets.TFC_TOKEN }}" \
-            --header "Content-Type: application/vnd.api+json" \
-            --request POST \
-            --data '{
-              "data": {
-                "attributes": {
-                  "message": "Triggered from GitHub Actions"
-                },
-                "type": "runs",
-                "relationships": {
-                  "workspace": {
-                    "data": {
-                      "type": "workspaces",
-                      "id": "'${{ secrets.TFC_WORKSPACE_ID }}'"
-                    }
-                  }
-                }
-              }
-            }' \
-            https://app.terraform.io/api/v2/runs
+        run: echo "Terraform configuration uploaded. Run will start if auto-queue is true."
+
+      - name: Post Checkout code
+        run: echo "Code checkout completed."
+
+      - name: Complete job
+        run: echo "Workflow run complete."
