@@ -13,12 +13,47 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v3
 
-      - name: Trigger Terraform Cloud Run via API
+      - name: Create and Upload Configuration Version
         run: |
-          echo "Triggering run for workspace ID: ${{ secrets.TFC_WORKSPACE_ID }}"
-          RESPONSE=$(curl --silent --show-error --write-out "HTTPSTATUS:%{http_code}" --request POST \
+          echo "Creating configuration version..."
+
+          # Step 1: Create config version
+          RESPONSE=$(curl --silent --show-error \
             --header "Authorization: Bearer ${{ secrets.TFC_TOKEN }}" \
             --header "Content-Type: application/vnd.api+json" \
+            --request POST \
+            --data '{
+              "data": {
+                "type": "configuration-versions",
+                "attributes": {
+                  "auto-queue-runs": false
+                }
+              }
+            }' \
+            https://app.terraform.io/api/v2/workspaces/${{ secrets.TFC_WORKSPACE_ID }}/configuration-versions)
+
+          CONFIG_UPLOAD_URL=$(echo "$RESPONSE" | jq -r .data.attributes."upload-url")
+          CONFIG_ID=$(echo "$RESPONSE" | jq -r .data.id)
+
+          echo "Config upload URL: $CONFIG_UPLOAD_URL"
+          echo "Config ID: $CONFIG_ID"
+
+          # Step 2: Archive terraform code
+          tar -czf config.tar.gz .
+
+          # Step 3: Upload archive
+          curl --request PUT \
+            --header "Content-Type: application/octet-stream" \
+            --data-binary @config.tar.gz \
+            "$CONFIG_UPLOAD_URL"
+
+          # Step 4: Trigger run using the uploaded config version
+          echo "Triggering run..."
+
+          RUN_RESPONSE=$(curl --silent --show-error \
+            --header "Authorization: Bearer ${{ secrets.TFC_TOKEN }}" \
+            --header "Content-Type: application/vnd.api+json" \
+            --request POST \
             --data '{
               "data": {
                 "attributes": {
@@ -29,23 +64,23 @@ jobs:
                   "workspace": {
                     "data": {
                       "type": "workspaces",
-                      "id": "'"${{ secrets.TFC_WORKSPACE_ID }}"'"
+                      "id": "'$TFC_WORKSPACE_ID'"
+                    }
+                  },
+                  "configuration-version": {
+                    "data": {
+                      "type": "configuration-versions",
+                      "id": "'$CONFIG_ID'"
                     }
                   }
                 }
               }
-            }' https://app.terraform.io/api/v2/runs)
+            }' \
+            https://app.terraform.io/api/v2/runs)
 
-          BODY=$(echo "$RESPONSE" | sed -e 's/HTTPSTATUS\:.*//g')
-          STATUS=$(echo "$RESPONSE" | tr -d '\n' | sed -e 's/.*HTTPSTATUS://')
+          echo "Run triggered. Response:"
+          echo "$RUN_RESPONSE"
 
-          echo "Response code: $STATUS"
-          echo "Response body:"
-          echo "$BODY"
-
-          if [ "$STATUS" -ne 201 ]; then
-            echo "❌ Failed to trigger run"
-            exit 1
-          else
-            echo "✅ Run triggered successfully"
-          fi
+        env:
+          TFC_TOKEN: ${{ secrets.TFC_TOKEN }}
+          TFC_WORKSPACE_ID: ${{ secrets.TFC_WORKSPACE_ID }}
