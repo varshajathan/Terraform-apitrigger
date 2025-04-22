@@ -1,38 +1,37 @@
-name: Terraform CI
 
-on:
-  push:
-    branches: [ main ]
-
-jobs:
-  terraform:
-    name: Trigger Terraform Cloud Run
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v3
-
-      - name: Trigger Terraform Cloud Run
-        run: |
-          curl \
-            --request POST \
-            --header "Authorization: Bearer ${{ secrets.TFC_TOKEN }}" \
-            --header "Content-Type: application/vnd.api+json" \
-            --data '{
+- name: Trigger Terraform Cloud Run via API
+  run: |
+    echo "Triggering run for workspace ID: ${{ secrets.TFC_WORKSPACE_ID }}"
+    RESPONSE=$(curl --silent --show-error --write-out "HTTPSTATUS:%{http_code}" --request POST \
+      --header "Authorization: Bearer ${{ secrets.TFC_TOKEN }}" \
+      --header "Content-Type: application/vnd.api+json" \
+      --data '{
+        "data": {
+          "attributes": {
+            "message": "Triggered by GitHub Actions"
+          },
+          "type": "run",
+          "relationships": {
+            "workspace": {
               "data": {
-                "attributes": {
-                  "message": "Triggered by GitHub Actions"
-                },
-                "type":"run",
-                "relationships": {
-                  "workspace": {
-                    "data": {
-                      "type": "workspaces",
-                      "id": "'"${{ secrets.TFC_WORKSPACE_ID }}"'"
-                    }
-                  }
-                }
+                "type": "workspaces",
+                "id": "'"${{ secrets.TFC_WORKSPACE_ID }}"'"
               }
-            }' \
-            https://app.terraform.io/api/v2/runs
+            }
+          }
+        }
+      }' https://app.terraform.io/api/v2/runs)
+
+    BODY=$(echo "$RESPONSE" | sed -e 's/HTTPSTATUS\:.*//g')
+    STATUS=$(echo "$RESPONSE" | tr -d '\n' | sed -e 's/.*HTTPSTATUS://')
+
+    echo "Response code: $STATUS"
+    echo "Response body:"
+    echo "$BODY"
+
+    if [ "$STATUS" -ne 201 ]; then
+      echo "❌ Failed to trigger run"
+      exit 1
+    else
+      echo "✅ Run triggered successfully"
+    fi
