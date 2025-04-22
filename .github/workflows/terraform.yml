@@ -53,7 +53,9 @@ jobs:
             --header "Content-Type: application/octet-stream" \
             --data-binary @config.tar.gz \
             "$UPLOAD_URL"
-
+      - name: Create tar.gz of Terraform Code
+        run: |
+          tar --exclude='.git' --exclude='.github' -czf config.tar.gz .
       - name: Trigger Run
         run: |
           curl --request POST \
