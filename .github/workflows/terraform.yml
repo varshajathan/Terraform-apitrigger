@@ -1,4 +1,7 @@
+<<<<<<< HEAD
 
+=======
+>>>>>>> 92add6a766f654113159d5ec490f2c9a8eaf8a38
 - name: Trigger Terraform Cloud Run via API
   run: |
     echo "Triggering run for workspace ID: ${{ secrets.TFC_WORKSPACE_ID }}"
