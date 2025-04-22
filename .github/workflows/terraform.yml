@@ -1,59 +1,33 @@
-name: Trigger Terraform Cloud Run via API
+name: Trigger Terraform Cloud
 
 on:
   push:
-    branches:
-      - main
+    branches: [ main ]  # <- Must match the branch you're pushing to
 
 jobs:
-  trigger-tfc-run:
+  trigger-terraform-cloud:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Set up job
-        run: echo "Setting up job..."
-
-      - name: Checkout code
-        uses: actions/checkout@v3
-
-      - name: Create Configuration Version
-        id: create_config
+      - name: Trigger Terraform Cloud Run via API
         run: |
-          response=$(curl \
+          curl --request POST \
             --header "Authorization: Bearer ${{ secrets.TFC_TOKEN }}" \
             --header "Content-Type: application/vnd.api+json" \
-            --request POST \
             --data '{
               "data": {
-                "type":"configuration-versions",
                 "attributes": {
-                  "auto-queue-runs": false
+                  "message": "Triggered by GitHub Actions"
+                },
+                "type": "run",
+                "relationships": {
+                  "workspace": {
+                    "data": {
+                      "type": "workspaces",
+                      "id": "'"${{ secrets.TFC_WORKSPACE_ID }}"'"
+                    }
+                  }
                 }
               }
             }' \
-            https://app.terraform.io/api/v2/workspaces/${{ secrets.TFC_WORKSPACE_ID }}/configuration-versions)
-
-          echo "$response"
-          upload_url=$(echo "$response" | jq -r '.data.attributes."upload-url"')
-          echo "upload_url=$upload_url" >> $GITHUB_ENV
-
-      - name: Create tar.gz of Terraform Code
-        run: |
-          tar --exclude='./.git' --exclude='./.github' -czf config.tar.gz .
-
-      - name: Upload Configuration to Terraform
-        run: |
-          curl \
-            --header "Content-Type: application/octet-stream" \
-            --request PUT \
-            --data-binary @config.tar.gz \
-            "$upload_url"
-
-      - name: Trigger Run
-        run: echo "Terraform configuration uploaded. Run will start if auto-queue is true."
-
-      - name: Post Checkout code
-        run: echo "Code checkout completed."
-
-      - name: Complete job
-        run: echo "Workflow run complete."
+            https://app.terraform.io/api/v2/runs
