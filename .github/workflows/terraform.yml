@@ -4,82 +4,75 @@ on:
   push:
     branches:
       - main
+  workflow_dispatch:
 
 jobs:
   trigger-tfc-run:
     runs-on: ubuntu-latest
 
     steps:
+      - name: Set up job
+        run: echo "Starting Terraform Cloud API run..."
+
       - name: Checkout code
         uses: actions/checkout@v3
 
       - name: Create Configuration Version
         id: create_config
         run: |
-          RESPONSE=$(curl --silent --request POST \
+          response=$(curl \
             --header "Authorization: Bearer ${{ secrets.TFC_TOKEN }}" \
             --header "Content-Type: application/vnd.api+json" \
+            --request POST \
             --data '{
               "data": {
-                "type": "configuration-versions",
+                "type":"configuration-versions",
                 "attributes": {
                   "auto-queue-runs": false
-                },
-                "relationships": {
-                  "workspace": {
-                    "data": {
-                      "type": "workspaces",
-                      "id": "'"${{ secrets.TFC_WORKSPACE_ID }}"'"
-                    }
-                  }
                 }
               }
-            }' https://app.terraform.io/api/v2/workspaces/${{ secrets.TFC_WORKSPACE_ID }}/configuration-versions)
+            }' \
+            https://app.terraform.io/api/v2/workspaces/${{ secrets.TFC_WORKSPACE_ID }}/configuration-versions)
 
-          echo "$RESPONSE" > response.json
-          CONFIG_ID=$(jq -r '.data.id' response.json)
-          UPLOAD_URL=$(jq -r '.data.attributes."upload-url"' response.json)
+          echo "$response"
+          upload_url=$(echo "$response" | jq -r .data.attributes."upload-url")
+          echo "upload_url=$upload_url" >> $GITHUB_ENV
 
-          echo "CONFIG_ID=$CONFIG_ID" >> $GITHUB_ENV
-          echo "UPLOAD_URL=$UPLOAD_URL" >> $GITHUB_ENV
-
-      - name: Create tar.gz of Terraform Code
+      - name: Prepare Terraform Configuration
         run: |
-          tar -czf config.tar.gz .
+          mkdir tf_package
+          cp *.tf tf_package/
+          cp terraform.yaml tf_package/ || true
+          tar -czf config.tar.gz -C tf_package .
 
       - name: Upload Configuration to Terraform
         run: |
-          curl --request PUT \
+          curl \
+            --request PUT \
             --header "Content-Type: application/octet-stream" \
             --data-binary @config.tar.gz \
-            "$UPLOAD_URL"
-      - name: Create tar.gz of Terraform Code
-        run: |
-          tar --exclude='.git' --exclude='.github' -czf config.tar.gz .
+            "${{ env.upload_url }}"
+
       - name: Trigger Run
         run: |
-          curl --request POST \
+          curl \
             --header "Authorization: Bearer ${{ secrets.TFC_TOKEN }}" \
             --header "Content-Type: application/vnd.api+json" \
+            --request POST \
             --data '{
               "data": {
                 "attributes": {
-                  "message": "Run triggered via GitHub Actions"
+                  "message": "Triggered from GitHub Actions"
                 },
-                "type": "run",
+                "type": "runs",
                 "relationships": {
                   "workspace": {
                     "data": {
                       "type": "workspaces",
-                      "id": "'"${{ secrets.TFC_WORKSPACE_ID }}"'"
-                    }
-                  },
-                  "configuration-version": {
-                    "data": {
-                      "type": "configuration-versions",
-                      "id": "'"$CONFIG_ID"'"
+                      "id": "'${{ secrets.TFC_WORKSPACE_ID }}'"
                     }
                   }
                 }
               }
-            }' https://app.terraform.io/api/v2/runs
+            }' \
+            https://app.terraform.io/api/v2/runs
