@@ -11,5 +11,5 @@ variable "zone" {
   default = "us-central1-a"
 }
 variable "credentials_file" {
-  description = "Service account key path"
+  description = "Service account key path declared"
 }
